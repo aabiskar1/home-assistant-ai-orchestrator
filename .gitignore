@@ -11,3 +11,15 @@ coverage/
 
 # Never commit Home Assistant inventory exports
 ha-ai-context*.json
+
+# Installation-specific Home Assistant entity policy
+config/allowed-entities.json
+config/denied-entities.json
+
+# Installation-specific Home Assistant entity policy
+config/allowed-entities.json
+config/denied-entities.json
+
+# Installation-specific Home Assistant entity policy
+config/allowed-entities.json
+config/denied-entities.json

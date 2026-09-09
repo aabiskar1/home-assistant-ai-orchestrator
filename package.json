@@ -1,34 +1,34 @@
 {
-  "name": "home-assistant-ai-orchestrator",
-  "version": "0.1.0",
-  "description": "Local-first orchestration layer connecting Home Assistant with local LLMs.",
-  "type": "module",
-  "main": "dist/index.js",
-  "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc --noEmit",
-    "lint": "xo",
-    "lint:fix": "xo --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "engines": {
-    "node": ">=24"
-  },
-  "license": "MIT",
-  "dependencies": {
-    "zod": "^4.6.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.20.2",
-    "prettier": "^3.9.6",
-    "tsx": "^4.23.13",
-    "typescript": "^6.0.3",
-    "vitest": "^5.0.0",
-    "xo": "^4.0.0"
-  }
+	"name": "home-assistant-ai-orchestrator",
+	"version": "0.1.0",
+	"description": "Local-first orchestration layer connecting Home Assistant with local LLMs.",
+	"type": "module",
+	"main": "dist/index.js",
+	"scripts": {
+		"dev": "tsx watch src/index.ts",
+		"start": "node dist/index.js",
+		"build": "tsc -p tsconfig.json",
+		"lint": "xo",
+		"lint:fix": "xo --fix",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	},
+	"engines": {
+		"node": ">=24"
+	},
+	"license": "MIT",
+	"dependencies": {
+		"got": "^16.0.0",
+		"zod": "^4.6.0"
+	},
+	"devDependencies": {
+		"@types/node": "^22.20.2",
+		"prettier": "^3.9.6",
+		"tsx": "^4.23.13",
+		"typescript": "^6.0.3",
+		"vitest": "^5.0.0",
+		"xo": "^4.0.0"
+	}
 }

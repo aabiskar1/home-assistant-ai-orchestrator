@@ -1,8 +1,11 @@
-/** @type {import('xo').FlatXoConfig} */
 const xoConfig = [
-  {
-    prettier: true,
-  },
+	{
+		prettier: true,
+		rules: {
+			'@typescript-eslint/naming-convention': 'off',
+			'n/prefer-global/process': 'off',
+		},
+	},
 ];
 
 export default xoConfig;
