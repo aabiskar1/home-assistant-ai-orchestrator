@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.png" alt="Home Assistant AI Orchestrator" />
+</p>
+
 # Home Assistant AI Orchestrator
 
 Home Assistant AI Orchestrator is a local-first, safety-oriented orchestration layer that lets a
