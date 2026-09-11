@@ -8,8 +8,9 @@ The intended flow is:
 
 ```text
 Home Assistant
-  -> relevant state collection
-  -> allow/deny filtering
+  -> entity discovery
+  -> selector-based allow/deny policy resolution
+  -> resolved allowed entities
   -> state normalization
   -> deterministic safety/rules
   -> local Ollama LLM
@@ -61,6 +62,7 @@ This repository is public. Never commit:
 - Home Assistant tokens or other credentials/secrets
 - Private Home Assistant URLs or private LAN addresses where a generic example is sufficient
 - Installation-specific `allowed-entities.json` or `denied-entities.json`
+- Installation-specific `entity-policy.json`
 - Private Home Assistant inventory or state dumps
 - Real installation-specific entity IDs in public tests or examples
 
@@ -80,6 +82,23 @@ Keep external API responses untrusted until validated. Prefer small modules with
 
 ## Development workflow
 
+At the beginning of every development session:
+
+1. Read `AGENTS.md` first.
+2. Read `.codex/checkpoint.md` when it exists.
+3. Verify checkpoint claims against the current branch, working tree, and repository contents before
+   relying on them.
+
+Maintain `.codex/checkpoint.md` as a local development checkpoint. Update it after every significant
+completed task and whenever the user says they are stopping, pausing, finishing for the day, or
+similar. Keep it concise and include the timestamp, current branch, sanitized Git status, current
+milestone, completed work, architectural decisions, validation results, unresolved issues,
+uncommitted work, and the exact recommended next step.
+
+The checkpoint is gitignored and must never contain secrets, credentials, tokens, private URLs,
+private IP addresses, installation-specific entity IDs, raw Home Assistant inventory, or contents
+from installation-specific policy files. Verify its contents for privacy before writing it.
+
 Before completing a change, run:
 
 ```sh
@@ -97,9 +116,14 @@ Implemented:
 
 - Home Assistant REST connectivity and state retrieval
 - Zod validation of Home Assistant state
-- JSON entity allow/deny policy
+- State-based entity discovery with deterministic domain derivation
+- Versioned selector-based entity policy supporting entity ID and domain selectors
+- Default-deny policy resolution with deny-overrides-allow behavior
 - Normalized AI-facing state
-- Deny-overrides-allow behavior
-- State normalization and policy tests
+- Read-only Ollama planning with structured output validation
+- Post-model validation against the resolved entity policy
+- Discovery, policy, normalization, planning, and validation tests
 
-Current milestone: read-only Ollama planning. The model may generate validated proposed actions, but do not implement Home Assistant service execution as part of this milestone.
+Current milestone: generic state-based entity discovery and read-only Ollama planning. Registry
+discovery and capability normalization are future milestones. The model may generate validated
+proposed actions, but do not implement Home Assistant service execution as part of this milestone.

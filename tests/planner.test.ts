@@ -1,0 +1,376 @@
+import {describe, expect, it} from 'vitest';
+import {ZodError} from 'zod';
+import {discoverEntities} from '../src/home-assistant/discovery.js';
+import {normalizeStates} from '../src/home-assistant/state-normalizer.js';
+import type {HomeAssistantState} from '../src/home-assistant/schemas.js';
+import type {OllamaChatRequest, OllamaChatTransport} from '../src/ollama/client.js';
+import {createPlan} from '../src/planning/planner.js';
+import {planJsonSchema} from '../src/planning/schemas.js';
+import {resolveEntityPolicy, selectAllowedEntities} from '../src/policy/resolver.js';
+
+const makeTransport =
+	(content: string, requests: OllamaChatRequest[] = []): OllamaChatTransport =>
+	async (request) => {
+		requests.push(request);
+
+		return content;
+	};
+
+describe('createPlan', () => {
+	it('accepts propose_actions with at least one action', async () => {
+		const requests: OllamaChatRequest[] = [];
+		const plan = await createPlan(
+			{
+				instruction: 'Decide whether the example light should be turned off.',
+				states: [
+					{
+						entityId: 'light.example_light',
+						domain: 'light',
+						state: 'on',
+						name: 'Example Light',
+						area: 'Example Room',
+					},
+				],
+			},
+			makeTransport(
+				JSON.stringify({
+					outcome: 'propose_actions',
+					summary: 'Proposed plan: The example light can be turned off.',
+					actions: [
+						{
+							entityId: 'light.example_light',
+							domain: 'light',
+							service: 'turn_off',
+							reason: 'The instruction asks whether it should be turned off.',
+						},
+					],
+				}),
+				requests,
+			),
+		);
+
+		expect(plan.actions).toHaveLength(1);
+		expect(plan.actions[0]?.entityId).toBe('light.example_light');
+		expect(requests[0]?.format).toBeDefined();
+
+		const userMessage = requests[0]?.messages.find((message) => message.role === 'user');
+		expect(JSON.parse(userMessage?.content ?? '')).toEqual({
+			instruction: 'Decide whether the example light should be turned off.',
+			states: [
+				{
+					entityId: 'light.example_light',
+					domain: 'light',
+					state: 'on',
+					name: 'Example Light',
+					area: 'Example Room',
+				},
+			],
+		});
+	});
+
+	it('rejects malformed model output', async () => {
+		await expect(
+			createPlan(
+				{instruction: 'Assess the example state.', states: []},
+				makeTransport('not valid JSON'),
+			),
+		).rejects.toBeInstanceOf(SyntaxError);
+	});
+
+	it('rejects JSON that does not match the plan schema', async () => {
+		const content = JSON.stringify({
+			outcome: 'no_action',
+			summary: 'Proposed plan: Missing actions.',
+			actions: 'none',
+		});
+
+		await expect(
+			createPlan({instruction: 'Assess the example state.', states: []}, makeTransport(content)),
+		).rejects.toBeInstanceOf(ZodError);
+	});
+
+	it('accepts a valid no_action outcome', async () => {
+		const plan = await createPlan(
+			{instruction: 'Assess whether any action is needed.', states: []},
+			makeTransport(
+				JSON.stringify({
+					outcome: 'no_action',
+					summary: 'Proposed plan: No action is needed.',
+					actions: [],
+				}),
+			),
+		);
+
+		expect(plan).toEqual({
+			outcome: 'no_action',
+			summary: 'Proposed plan: No action is needed.',
+			actions: [],
+		});
+	});
+
+	it('accepts a valid insufficient_context outcome', async () => {
+		const plan = await createPlan(
+			{instruction: 'Decide whether a change is appropriate.', states: []},
+			makeTransport(
+				JSON.stringify({
+					outcome: 'insufficient_context',
+					summary:
+						'Proposed plan: There is insufficient context to decide, so no actions are proposed.',
+					actions: [],
+				}),
+			),
+		);
+
+		expect(plan.actions).toEqual([]);
+		expect(plan.outcome).toBe('insufficient_context');
+		expect(plan.summary).toContain('insufficient context');
+	});
+
+	it.each([
+		{
+			name: 'propose_actions with zero actions',
+			plan: {
+				outcome: 'propose_actions',
+				summary: 'Proposed plan: Changes are proposed.',
+				actions: [],
+			},
+		},
+		{
+			name: 'no_action with an action',
+			plan: {
+				outcome: 'no_action',
+				summary: 'Proposed plan: No change is appropriate.',
+				actions: [
+					{
+						entityId: 'light.example_light',
+						domain: 'light',
+						service: 'turn_off',
+						reason: 'The requested change is relevant.',
+					},
+				],
+			},
+		},
+		{
+			name: 'insufficient_context with an action',
+			plan: {
+				outcome: 'insufficient_context',
+				summary: 'Proposed plan: More context is required.',
+				actions: [
+					{
+						entityId: 'light.example_light',
+						domain: 'light',
+						service: 'turn_off',
+						reason: 'The requested change is relevant.',
+					},
+				],
+			},
+		},
+	])('rejects $name', async ({plan}) => {
+		const transport = makeTransport(JSON.stringify(plan));
+
+		await expect(
+			createPlan({instruction: 'Assess the example state.', states: []}, transport),
+		).rejects.toBeInstanceOf(ZodError);
+	});
+
+	it('rejects a summary without the proposed-plan prefix', async () => {
+		const content = JSON.stringify({
+			outcome: 'no_action',
+			summary: 'No action is needed.',
+			actions: [],
+		});
+
+		await expect(
+			createPlan({instruction: 'Assess the example state.', states: []}, makeTransport(content)),
+		).rejects.toBeInstanceOf(ZodError);
+	});
+
+	it('includes the discriminated outcomes and action counts in the generated JSON Schema', () => {
+		expect(planJsonSchema).toMatchObject({
+			oneOf: [
+				{
+					properties: {
+						outcome: {const: 'propose_actions'},
+						summary: {pattern: '^Proposed plan:.*'},
+						actions: {minItems: 1},
+					},
+				},
+				{
+					properties: {
+						outcome: {const: 'no_action'},
+						actions: {minItems: 0, maxItems: 0},
+					},
+				},
+				{
+					properties: {
+						outcome: {const: 'insufficient_context'},
+						actions: {minItems: 0, maxItems: 0},
+					},
+				},
+			],
+		});
+	});
+
+	it('instructs the model to use prospective language and report insufficient context', async () => {
+		const requests: OllamaChatRequest[] = [];
+
+		await createPlan(
+			{instruction: 'Assess the example state.', states: []},
+			makeTransport(
+				JSON.stringify({
+					outcome: 'no_action',
+					summary: 'Proposed plan: No action is needed.',
+					actions: [],
+				}),
+				requests,
+			),
+		);
+
+		const systemMessage = requests[0]?.messages.find((message) => message.role === 'system');
+		expect(systemMessage?.content).toContain('You propose actions; you never execute them.');
+		expect(systemMessage?.content).toContain('use prospective language');
+		expect(systemMessage?.content).toContain(
+			'Never claim or imply that an action was executed, completed, or attempted.',
+		);
+		expect(systemMessage?.content).toContain('there is insufficient context');
+		expect(systemMessage?.content).toContain(
+			'Use current state to determine whether a proposed change is relevant and to avoid no-op proposals; do not infer intent from current state alone.',
+		);
+		expect(systemMessage?.content).toContain(
+			'Choose the outcome before writing the summary and actions:',
+		);
+		expect(systemMessage?.content).toContain(
+			'When the user explicitly states a target outcome and supplied entity states identify relevant non-no-op changes, use "propose_actions" and include those actions. Do not return only descriptive text.',
+		);
+	});
+
+	it('rejects a whitespace-only planning instruction without calling the model', async () => {
+		let wasCalled = false;
+		const transport: OllamaChatTransport = async () => {
+			wasCalled = true;
+			return JSON.stringify({
+				outcome: 'no_action',
+				summary: 'Proposed plan: No action is needed.',
+				actions: [],
+			});
+		};
+
+		await expect(createPlan({instruction: ' \n\t ', states: []}, transport)).rejects.toThrow(
+			'A planning instruction is required.',
+		);
+		expect(wasCalled).toBe(false);
+	});
+
+	it.each([
+		{
+			name: 'plan objects',
+			plan: {
+				outcome: 'no_action',
+				summary: 'Proposed plan: No action is needed.',
+				actions: [],
+				unexpected: true,
+			},
+		},
+		{
+			name: 'action objects',
+			plan: {
+				outcome: 'propose_actions',
+				summary: 'Proposed plan: Turn off the example light.',
+				actions: [
+					{
+						entityId: 'light.example_light',
+						domain: 'light',
+						service: 'turn_off',
+						reason: 'The example light is no longer needed.',
+						unexpected: true,
+					},
+				],
+			},
+		},
+	])('strictly rejects unknown fields in $name', async ({plan}) => {
+		const transport = makeTransport(JSON.stringify(plan));
+
+		await expect(
+			createPlan({instruction: 'Assess the example state.', states: []}, transport),
+		).rejects.toBeInstanceOf(ZodError);
+	});
+
+	it('sends only normalized state fields to the model', async () => {
+		const requests: OllamaChatRequest[] = [];
+		const stateWithUnexpectedProperty = {
+			entityId: 'light.example_light',
+			domain: 'light',
+			state: 'on',
+			name: 'Example Light',
+			area: 'Example Room',
+			accessToken: 'must-not-be-sent',
+		};
+
+		await createPlan(
+			{
+				instruction: 'Assess the example light.',
+				states: [stateWithUnexpectedProperty],
+			},
+			makeTransport(
+				JSON.stringify({
+					outcome: 'no_action',
+					summary: 'Proposed plan: No action is needed.',
+					actions: [],
+				}),
+				requests,
+			),
+		);
+
+		const userMessage = requests[0]?.messages.find((message) => message.role === 'user');
+		expect(JSON.parse(userMessage?.content ?? '')).toEqual({
+			instruction: 'Assess the example light.',
+			states: [
+				{
+					entityId: 'light.example_light',
+					domain: 'light',
+					state: 'on',
+					name: 'Example Light',
+					area: 'Example Room',
+				},
+			],
+		});
+	});
+
+	it('sends only policy-resolved discovered entities to the model', async () => {
+		const requests: OllamaChatRequest[] = [];
+		const makeState = (entityId: string): HomeAssistantState => ({
+			entity_id: entityId,
+			state: 'on',
+			attributes: {},
+			last_changed: '2026-09-09T20:00:00+00:00',
+			last_updated: '2026-09-09T20:00:00+00:00',
+		});
+		const discovered = discoverEntities([
+			makeState('light.example_allowed'),
+			makeState('light.example_denied'),
+			makeState('switch.example_unlisted'),
+		]);
+		const policy = resolveEntityPolicy(discovered, {
+			version: 1,
+			allow: [{domain: 'light'}],
+			deny: [{entityId: 'light.example_denied'}],
+		});
+		const normalized = normalizeStates(selectAllowedEntities(discovered, policy));
+
+		await createPlan(
+			{instruction: 'Assess the allowed entities.', states: normalized},
+			makeTransport(
+				JSON.stringify({
+					outcome: 'no_action',
+					summary: 'Proposed plan: No action is needed.',
+					actions: [],
+				}),
+				requests,
+			),
+		);
+
+		const userMessage = requests[0]?.messages.find((message) => message.role === 'user');
+		const content = JSON.parse(userMessage?.content ?? '') as {states: Array<{entityId: string}>};
+		expect(content.states.map((state) => state.entityId)).toEqual(['light.example_allowed']);
+	});
+});

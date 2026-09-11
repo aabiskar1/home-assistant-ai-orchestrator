@@ -1,4 +1,5 @@
 import {describe, expect, it} from 'vitest';
+import {discoverEntities} from '../src/home-assistant/discovery.js';
 import {normalizeState, normalizeStates} from '../src/home-assistant/state-normalizer.js';
 import type {HomeAssistantState} from '../src/home-assistant/schemas.js';
 
@@ -14,57 +15,33 @@ const makeState = (
 	last_updated: '2026-09-09T20:00:00+00:00',
 });
 
-describe('normalizeState', () => {
-	it('normalizes an allowed entity', () => {
-		const result = normalizeState(
-			makeState('light.kitchen_kitchen_light_1', 'on', {
-				friendly_name: 'Kitchen Light 1',
+describe('state normalization', () => {
+	it('normalizes a discovered entity', () => {
+		const [entity] = discoverEntities([
+			makeState('light.example_kitchen_light', 'on', {
+				friendly_name: 'Example Kitchen Light',
 			}),
-			{
-				allowed: new Set(['light.kitchen_kitchen_light_1']),
-				denied: new Set(),
-			},
-		);
+		]);
 
-		expect(result).toEqual({
-			entityId: 'light.kitchen_kitchen_light_1',
+		expect(entity).toBeDefined();
+		expect(normalizeState(entity!)).toEqual({
+			entityId: 'light.example_kitchen_light',
 			domain: 'light',
 			state: 'on',
-			name: 'Kitchen Light 1',
+			name: 'Example Kitchen Light',
 			area: undefined,
 		});
 	});
 
-	it('rejects an entity not in the allow list', () => {
-		const result = normalizeState(makeState('light.living_room', 'on'), {
-			allowed: new Set(),
-			denied: new Set(),
-		});
+	it('normalizes a collection of discovered entities', () => {
+		const entities = discoverEntities([
+			makeState('light.example_kitchen_light', 'on'),
+			makeState('light.example_hallway', 'off'),
+		]);
 
-		expect(result).toBeUndefined();
-	});
-
-	it('rejects explicitly denied entities', () => {
-		const entityId = 'switch.smart_switch_2203011827560051860948e1e98b4e75_outlet';
-
-		const result = normalizeState(makeState(entityId, 'on'), {
-			allowed: new Set([entityId]),
-			denied: new Set([entityId]),
-		});
-
-		expect(result).toBeUndefined();
-	});
-
-	it('normalizes a list and removes non-allowed entities', () => {
-		const result = normalizeStates(
-			[makeState('light.kitchen_kitchen_light_1', 'on'), makeState('light.living_room', 'off')],
-			{
-				allowed: new Set(['light.kitchen_kitchen_light_1']),
-				denied: new Set(),
-			},
-		);
-
-		expect(result).toHaveLength(1);
-		expect(result[0]?.entityId).toBe('light.kitchen_kitchen_light_1');
+		expect(normalizeStates(entities).map((entity) => entity.entityId)).toEqual([
+			'light.example_kitchen_light',
+			'light.example_hallway',
+		]);
 	});
 });

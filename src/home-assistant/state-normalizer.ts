@@ -1,9 +1,4 @@
-import type {HomeAssistantState} from './schemas.js';
-
-export type EntityPolicy = {
-	allowed: Set<string>;
-	denied: Set<string>;
-};
+import type {DiscoveredEntity} from './discovery.js';
 
 export type NormalizedEntityState = {
 	entityId: string;
@@ -12,8 +7,6 @@ export type NormalizedEntityState = {
 	name: string | undefined;
 	area: string | undefined;
 };
-
-const getDomain = (entityId: string): string => entityId.split('.', 1)[0] ?? '';
 
 const getStringAttribute = (
 	attributes: Record<string, unknown>,
@@ -24,33 +17,17 @@ const getStringAttribute = (
 	return typeof value === 'string' ? value : undefined;
 };
 
-export const normalizeState = (
-	entity: HomeAssistantState,
-	policy: EntityPolicy,
-): NormalizedEntityState | undefined => {
-	if (!policy.allowed.has(entity.entity_id)) {
-		return undefined;
-	}
-
-	if (policy.denied.has(entity.entity_id)) {
-		return undefined;
-	}
-
-	const domain = getDomain(entity.entity_id);
+export const normalizeState = (entity: DiscoveredEntity): NormalizedEntityState => {
+	const {homeAssistantState} = entity;
 
 	return {
-		entityId: entity.entity_id,
-		domain,
-		state: entity.state,
-		name: getStringAttribute(entity.attributes, 'friendly_name'),
-		area: getStringAttribute(entity.attributes, 'area_name'),
+		entityId: entity.entityId,
+		domain: entity.domain,
+		state: homeAssistantState.state,
+		name: getStringAttribute(homeAssistantState.attributes, 'friendly_name'),
+		area: getStringAttribute(homeAssistantState.attributes, 'area_name'),
 	};
 };
 
-export const normalizeStates = (
-	entities: HomeAssistantState[],
-	policy: EntityPolicy,
-): NormalizedEntityState[] =>
-	entities
-		.map((entity) => normalizeState(entity, policy))
-		.filter((entity): entity is NormalizedEntityState => entity !== undefined);
+export const normalizeStates = (entities: DiscoveredEntity[]): NormalizedEntityState[] =>
+	entities.map((entity) => normalizeState(entity));

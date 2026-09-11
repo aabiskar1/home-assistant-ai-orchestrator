@@ -13,13 +13,9 @@ coverage/
 ha-ai-context*.json
 
 # Installation-specific Home Assistant entity policy
+config/entity-policy.json
 config/allowed-entities.json
 config/denied-entities.json
 
-# Installation-specific Home Assistant entity policy
-config/allowed-entities.json
-config/denied-entities.json
-
-# Installation-specific Home Assistant entity policy
-config/allowed-entities.json
-config/denied-entities.json
+# Local Codex development checkpoint
+.codex/checkpoint.md

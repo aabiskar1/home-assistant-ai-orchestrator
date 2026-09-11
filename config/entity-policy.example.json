@@ -1,0 +1,5 @@
+{
+	"version": 1,
+	"allow": [{"domain": "light"}, {"entityId": "switch.example_switch"}],
+	"deny": [{"domain": "lock"}, {"entityId": "switch.example_critical_device"}]
+}
