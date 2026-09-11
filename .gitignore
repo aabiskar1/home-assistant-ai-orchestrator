@@ -17,5 +17,5 @@ config/entity-policy.json
 config/allowed-entities.json
 config/denied-entities.json
 
-# Local Codex development checkpoint
-.codex/checkpoint.md
+# Local Codex workspace
+.codex/
