@@ -18,7 +18,7 @@
 	"engines": {
 		"node": ">=24"
 	},
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"dependencies": {
 		"got": "^16.0.0",
 		"zod": "^4.6.0"
